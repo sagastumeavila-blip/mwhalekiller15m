@@ -23,7 +23,10 @@ def load_state():
 def save_state(s):
     with open(STATE_FILE,"w") as f: json.dump(s,f)
 state=load_state()
-def log(m): print("["+datetime.now().strftime("%H:%M:%S")+"] "+m,flush=True)
+def log(m): 
+    msg="["+datetime.now().strftime("%H:%M:%S")+"] "+m
+    print(msg,flush=True)
+    os.sys.stdout.flush()
 def get_price():
     try: return float(client.get_tickers(category="linear",symbol=SYMBOL)["result"]["list"][0]["lastPrice"])
     except Exception as e: log("PRICE ERR:"+str(e)); return None
@@ -102,58 +105,62 @@ def reset():
     state["tp1_done"]=False
     state["tp2_done"]=False
 def process(data):
-    action=data.get("action")
-    fallback_price=float(str(data.get("price"))) if data.get("price") else None
-    log("Procesando:"+str(action))
-    if action=="long":
-        with state_lock:
-            al=state["position"]=="long"; hp=state.get("last_tp_profit",0)>0
-        if al:
-            if hp: add_margin()
-            else: log("LONG rep sin profit")
-            return
-        log("LONG @ "+str(data.get("price"))); close_all(); time.sleep(2); set_lev(); time.sleep(1)
-        s=get_size(); order("Buy",s)
-        with state_lock:
-            state["position"]="long"; state["entry_price"]=float(str(data.get("price"))); reset(); save_state(state)
-    elif action=="short":
-        with state_lock:
-            ash=state["position"]=="short"; hp=state.get("last_tp_profit",0)>0
-        if ash:
-            if hp: add_margin()
-            else: log("SHORT rep sin profit")
-            return
-        log("SHORT @ "+str(data.get("price"))); close_all(); time.sleep(2); set_lev(); time.sleep(1)
-        s=get_size(); order("Sell",s)
-        with state_lock:
-            state["position"]="short"; state["entry_price"]=float(str(data.get("price"))); reset(); save_state(state)
-    elif action=="long_repeat":
-        with state_lock:
-            pos=state["position"]; hp=state.get("last_tp_profit",0)>0
-        if pos=="long":
-            if hp: add_margin()
-            else: log("LONG repeat sin profit - ignorando")
-        else: log("LONG repeat ignorado - no hay posicion long")
-    elif action=="short_repeat":
-        with state_lock:
-            pos=state["position"]; hp=state.get("last_tp_profit",0)>0
-        if pos=="short":
-            if hp: add_margin()
-            else: log("SHORT repeat sin profit - ignorando")
-        else: log("SHORT repeat ignorado - no hay posicion short")
-    elif action=="tp1":
-        if state["position"] is None: return
-        exec_tp("TP1 15m 58/40 (50%)",TP1_PCT,"tp1_done",fallback_price)
-    elif action=="tp2":
-        if state["position"] is None: return
-        exec_tp("TP2 15m 65/33 (25%)",TP2_PCT,"tp2_done",fallback_price)
-    else: log("Desconocido:"+str(action))
+    try:
+        action=data.get("action")
+        fallback_price=float(str(data.get("price"))) if data.get("price") else None
+        log("Procesando:"+str(action))
+        if action=="long":
+            with state_lock:
+                al=state["position"]=="long"; hp=state.get("last_tp_profit",0)>0
+            if al:
+                if hp: add_margin()
+                else: log("LONG rep sin profit")
+                return
+            log("LONG @ "+str(data.get("price"))); close_all(); time.sleep(2); set_lev(); time.sleep(1)
+            s=get_size(); order("Buy",s)
+            with state_lock:
+                state["position"]="long"; state["entry_price"]=float(str(data.get("price"))); reset(); save_state(state)
+        elif action=="short":
+            with state_lock:
+                ash=state["position"]=="short"; hp=state.get("last_tp_profit",0)>0
+            if ash:
+                if hp: add_margin()
+                else: log("SHORT rep sin profit")
+                return
+            log("SHORT @ "+str(data.get("price"))); close_all(); time.sleep(2); set_lev(); time.sleep(1)
+            s=get_size(); order("Sell",s)
+            with state_lock:
+                state["position"]="short"; state["entry_price"]=float(str(data.get("price"))); reset(); save_state(state)
+        elif action=="long_repeat":
+            with state_lock:
+                pos=state["position"]; hp=state.get("last_tp_profit",0)>0
+            if pos=="long":
+                if hp: add_margin()
+                else: log("LONG repeat sin profit - ignorando")
+            else: log("LONG repeat ignorado - no hay posicion long")
+        elif action=="short_repeat":
+            with state_lock:
+                pos=state["position"]; hp=state.get("last_tp_profit",0)>0
+            if pos=="short":
+                if hp: add_margin()
+                else: log("SHORT repeat sin profit - ignorando")
+            else: log("SHORT repeat ignorado - no hay posicion short")
+        elif action=="tp1":
+            if state["position"] is None: return
+            exec_tp("TP1 15m 58/40 (50%)",TP1_PCT,"tp1_done",fallback_price)
+        elif action=="tp2":
+            if state["position"] is None: return
+            exec_tp("TP2 15m 65/33 (25%)",TP2_PCT,"tp2_done",fallback_price)
+        else: log("Desconocido:"+str(action))
+    except Exception as e:
+        log("PROCESS ERR:"+str(e))
 @app.route("/webhook",methods=["POST"])
 def webhook():
-    data=request.get_json(); log("Signal:"+str(data))
-    threading.Thread(target=process,args=(data,),daemon=True).start()
+    data=request.get_json()
+    log("Signal:"+str(data))
+    process(data)
     return jsonify({"status":"ok"})
 if __name__=="__main__":
-    print("MWhalekiller FART 15m v3 | TP1 50% RSI15m 58/40 | TP2 25% RSI15m 65/33 | Resto 25% libre")
-    print("Estado:"+str(state))
+    print("MWhalekiller FART 15m v4 | TP1 50% RSI15m 58/40 | TP2 25% RSI15m 65/33 | Resto 25% libre",flush=True)
+    print("Estado:"+str(state),flush=True)
     app.run(host="0.0.0.0",port=5000)
